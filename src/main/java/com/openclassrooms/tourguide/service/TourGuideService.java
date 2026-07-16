@@ -11,6 +11,9 @@ import java.time.ZoneOffset;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +51,18 @@ public class TourGuideService {
 		tracker = new Tracker(this);
 		addShutDownHook();
 	}
+
+	/**
+	 * Pool dédié au suivi de position en parallèle. Les appels gpsUtil.getUserLocation
+	 * sont bloqués sur une temporisation interne : la concurrence permet de servir
+	 * 100 000 utilisateurs en quelques dizaines de secondes au lieu de ~2 heures.
+	 * Threads daemon pour ne pas empêcher l'arrêt de la JVM.
+	 */
+	private final ExecutorService trackExecutor = Executors.newFixedThreadPool(200, runnable -> {
+		Thread thread = new Thread(runnable);
+		thread.setDaemon(true);
+		return thread;
+	});
 
 	public List<UserReward> getUserRewards(User user) {
 		return user.getUserRewards();
@@ -87,6 +102,27 @@ public class TourGuideService {
 		user.addToVisitedLocations(visitedLocation);
 		rewardsService.calculateRewards(user);
 		return visitedLocation;
+	}
+
+	/**
+	 * Version asynchrone de trackUserLocation, exécutée sur le pool trackExecutor.
+	 */
+	public CompletableFuture<Void> trackUserLocationAsync(User user) {
+		return CompletableFuture.runAsync(() -> trackUserLocation(user), trackExecutor);
+	}
+
+	/**
+	 * Suit la position de tous les utilisateurs en parallèle, puis attend que
+	 * l'ensemble des suivis soit terminé avant de rendre la main.
+	 * Toute la logique de concurrence (dispatch + attente) est encapsulée ici,
+	 * côté service : les tests n'ont ni thread ni CompletableFuture à manipuler.
+	 */
+	public void trackAllUsersLocation(List<User> users) {
+		CompletableFuture<?>[] futures = users
+				.stream()
+				.map(this::trackUserLocationAsync)
+				.toArray(CompletableFuture[]::new);
+		CompletableFuture.allOf(futures).join();
 	}
 
 	public List<Attraction> getNearByAttractions(VisitedLocation visitedLocation) {
