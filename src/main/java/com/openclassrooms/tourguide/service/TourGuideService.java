@@ -29,7 +29,8 @@ import tripPricer.TripPricer;
 
 @Service
 public class TourGuideService {
-	private Logger logger = LoggerFactory.getLogger(TourGuideService.class);
+
+	private final Logger logger = LoggerFactory.getLogger(TourGuideService.class);
 	private final GpsUtil gpsUtil;
 	private final RewardsService rewardsService;
 	private final TripPricer tripPricer = new TripPricer();
@@ -48,16 +49,11 @@ public class TourGuideService {
 			initializeInternalUsers();
 			logger.debug("Finished initializing users");
 		}
+
 		tracker = new Tracker(this);
 		addShutDownHook();
 	}
 
-	/**
-	 * Pool dédié au suivi de position en parallèle. Les appels gpsUtil.getUserLocation
-	 * sont bloqués sur une temporisation interne : la concurrence permet de servir
-	 * 100 000 utilisateurs en quelques dizaines de secondes au lieu de ~2 heures.
-	 * Threads daemon pour ne pas empêcher l'arrêt de la JVM.
-	 */
 	private final ExecutorService trackExecutor = Executors.newFixedThreadPool(200, runnable -> {
 		Thread thread = new Thread(runnable);
 		thread.setDaemon(true);
@@ -69,7 +65,7 @@ public class TourGuideService {
 	}
 
 	public VisitedLocation getUserLocation(User user) {
-		VisitedLocation visitedLocation = (user.getVisitedLocations().size() > 0) ? user.getLastVisitedLocation()
+		VisitedLocation visitedLocation = (!user.getVisitedLocations().isEmpty()) ? user.getLastVisitedLocation()
 				: trackUserLocation(user);
 		return visitedLocation;
 	}
@@ -79,7 +75,9 @@ public class TourGuideService {
 	}
 
 	public List<User> getAllUsers() {
-		return internalUserMap.values().stream().collect(Collectors.toList());
+		return internalUserMap.values()
+				.stream()
+				.collect(Collectors.toList());
 	}
 
 	public void addUser(User user) {
@@ -89,7 +87,8 @@ public class TourGuideService {
 	}
 
 	public List<Provider> getTripDeals(User user) {
-		int cumulatativeRewardPoints = user.getUserRewards().stream().mapToInt(i -> i.getRewardPoints()).sum();
+		int cumulatativeRewardPoints = user.getUserRewards().stream().mapToInt(UserReward::getRewardPoints).sum();
+
 		List<Provider> providers = tripPricer.getPrice(tripPricerApiKey, user.getUserId(),
 				user.getUserPreferences().getNumberOfAdults(), user.getUserPreferences().getNumberOfChildren(),
 				user.getUserPreferences().getTripDuration(), cumulatativeRewardPoints);
@@ -104,19 +103,10 @@ public class TourGuideService {
 		return visitedLocation;
 	}
 
-	/**
-	 * Version asynchrone de trackUserLocation, exécutée sur le pool trackExecutor.
-	 */
 	public CompletableFuture<Void> trackUserLocationAsync(User user) {
 		return CompletableFuture.runAsync(() -> trackUserLocation(user), trackExecutor);
 	}
 
-	/**
-	 * Suit la position de tous les utilisateurs en parallèle, puis attend que
-	 * l'ensemble des suivis soit terminé avant de rendre la main.
-	 * Toute la logique de concurrence (dispatch + attente) est encapsulée ici,
-	 * côté service : les tests n'ont ni thread ni CompletableFuture à manipuler.
-	 */
 	public void trackAllUsersLocation(List<User> users) {
 		CompletableFuture<?>[] futures = users
 				.stream()
@@ -152,14 +142,7 @@ public class TourGuideService {
 		});
 	}
 
-	/**********************************************************************************
-	 * 
-	 * Methods Below: For Internal Testing
-	 * 
-	 **********************************************************************************/
 	private static final String tripPricerApiKey = "test-server-api-key";
-	// Database connection will be used for external users, but for testing purposes
-	// internal users are provided and stored in memory
 	private final Map<String, User> internalUserMap = new HashMap<>();
 
 	private void initializeInternalUsers() {
@@ -172,7 +155,8 @@ public class TourGuideService {
 
 			internalUserMap.put(userName, user);
 		});
-		logger.debug("Created " + InternalTestHelper.getInternalUserNumber() + " internal test users.");
+
+        logger.debug("Created {} internal test users.", InternalTestHelper.getInternalUserNumber());
 	}
 
 	private void generateUserLocationHistory(User user) {

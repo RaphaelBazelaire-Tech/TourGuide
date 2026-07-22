@@ -1,4 +1,4 @@
-package com.openclassrooms.tourguide;
+package com.openclassrooms.tourguide.module;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,5 +24,4 @@ public class TourGuideModule {
 	public RewardCentral getRewardCentral() {
 		return new RewardCentral();
 	}
-	
 }

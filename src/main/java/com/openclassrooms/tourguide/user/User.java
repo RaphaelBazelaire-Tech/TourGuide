@@ -16,8 +16,8 @@ public class User {
 	private String phoneNumber;
 	private String emailAddress;
 	private Date latestLocationTimestamp;
-	private List<VisitedLocation> visitedLocations = new CopyOnWriteArrayList<>();
-	private List<UserReward> userRewards = new CopyOnWriteArrayList<>();
+	private final List<VisitedLocation> visitedLocations = new CopyOnWriteArrayList<>();
+	private final List<UserReward> userRewards = new CopyOnWriteArrayList<>();
 	private UserPreferences userPreferences = new UserPreferences();
 	private List<Provider> tripDeals = new ArrayList<>();
 
@@ -94,7 +94,7 @@ public class User {
 	}
 
 	public VisitedLocation getLastVisitedLocation() {
-		return visitedLocations.get(visitedLocations.size() - 1);
+		return visitedLocations.getLast();
 	}
 	
 	public void setTripDeals(List<Provider> tripDeals) {
